@@ -150,10 +150,9 @@ class InstagramDataPipelineV2:
                 'metadata': {
                     'type': 'post',
                     'timestamp': post['timestamp'],
-                    'engagement': {
-                        'likes': post.get('like_count', 0),
-                        'comments': post.get('comments_count', 0)
-                    }
+                    'likes': post.get('like_count', 0),  # Flatten engagement
+                    'comments': post.get('comments_count', 0),  # Flatten engagement
+                    'text': clean_caption  # Add the text field here
                 }
             }
             vectors.append(vector)
@@ -174,7 +173,8 @@ class InstagramDataPipelineV2:
                         'type': 'comment',
                         'timestamp': comment['timestamp'],
                         'post_id': post['id'],
-                        'username': comment.get('username', 'unknown_user')
+                        'username': comment.get('username', 'unknown_user'),
+                        'text': clean_text  # Add the text field here
                     }
                 }
                 vectors.append(vector)

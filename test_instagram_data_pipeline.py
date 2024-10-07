@@ -60,8 +60,43 @@ class TestInstagramDataPipelineV2(unittest.TestCase):
 
         self.pipeline.process_and_upload_data()
 
-        self.mock_supabase.table().upsert.assert_called()
-        self.mock_pinecone.upsert.assert_called()
+        # Check that upsert was called for posts
+        self.mock_supabase.table().upsert.assert_any_call(
+            {'id': '1', 'caption': 'Test post', 'timestamp': '2023-01-01T00:00:00+0000'},
+            on_conflict='id'
+        )
+
+        # Check that upsert was called for comments
+        self.mock_supabase.table().upsert.assert_any_call(
+            {'id': 'c1', 'text': 'Test comment', 'timestamp': '2023-01-01T00:00:00+0000', 'post_id': '1'},
+            on_conflict='id'
+        )
+
+        # Check that Pinecone upsert was called with the correct vectors
+        expected_vectors = [
+            {
+                'id': '1',
+                'values': [0.1, 0.2, 0.3],
+                'metadata': {
+                    'type': 'post',
+                    'timestamp': '2023-01-01T00:00:00+0000',
+                    'engagement': {'likes': 0, 'comments': 0},
+                    'text': 'test post'
+                }
+            },
+            {
+                'id': 'c1',
+                'values': [0.1, 0.2, 0.3],
+                'metadata': {
+                    'type': 'comment',
+                    'timestamp': '2023-01-01T00:00:00+0000',
+                    'post_id': '1',
+                    'username': 'unknown_user',
+                    'text': 'test comment'
+                }
+            }
+        ]
+        self.mock_pinecone.upsert.assert_called_with(vectors=expected_vectors)
 
 if __name__ == '__main__':
     unittest.main()
