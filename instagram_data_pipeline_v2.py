@@ -179,8 +179,9 @@ class InstagramDataPipelineV2:
                 }
                 vectors.append(vector)
 
-                # Save comment to Supabase
+                # Save comment to Supabase with "replied" field set to False
                 comment['post_id'] = post['id']
+                comment['replied'] = False  # Set default value for "replied"
                 self.supabase.table('comments').upsert(comment, on_conflict='id').execute()
 
             time.sleep(self.rate_limit_delay)
