@@ -1,141 +1,149 @@
-# Instagram Data Collection and Vectorization Project
+# Instagram Data Pipeline
 
-## Project Overview
+This project implements a data pipeline that fetches Instagram posts, comments, and replies, processes them, and stores the data in Supabase and Pinecone.
 
-This project automates the collection, processing, and vectorization of Instagram post data. It fetches the latest posts and comments, processes the text, generates embeddings, and stores the data in both a Supabase database and a Pinecone vector database. The system is designed to run periodically on Google Cloud Functions, keeping the data up-to-date for use in AI-driven applications.
+## Table of Contents
 
-## Features
+1. [Prerequisites](#prerequisites)
+2. [Local Setup](#local-setup)
+3. [Database Setup](#database-setup)
+4. [Testing](#testing)
+5. [Deployment to Google Cloud Functions](#deployment-to-google-cloud-functions)
 
-- Fetches recent Instagram posts and comments using the Instagram Graph API
-- Processes and cleans text data, including emoji handling
-- Generates text embeddings using OpenAI's API
-- Stores raw data in Supabase and vector embeddings in Pinecone
-- Implements pagination and error handling for robust data collection
-- Designed for deployment on Google Cloud Functions with scheduled execution
+## Prerequisites
 
-## Tech Stack
+- Python 3.8+
+- Instagram Graph API access and token
+- Supabase account and project
+- Pinecone account and API key
+- OpenAI API key
+- Google Cloud account (for deployment)
 
-- Python 3.9+
-- Instagram Graph API
-- Supabase (PostgreSQL database)
-- OpenAI API (for text embeddings)
-- Pinecone (vector database)
-- Google Cloud Functions
-- Google Cloud Scheduler
+## Local Setup
 
-## Project Structure
+1. Clone the repository: `git clone https://github.com/yourusername/instagram-data-pipeline.git
+cd instagram-data-pipeline  `
 
-- `instagram_data_pipeline_v2.py`: Main script containing the data pipeline logic
-- `test_instagram_data_pipeline.py`: Unit tests for the data pipeline
-- `requirements.txt`: List of Python dependencies
-- `README.md`: This file, containing project documentation
+2. Create a virtual environment and activate it: `` python -m venv venv
+source venv/bin/activate  # On Windows, use `venv\Scripts\activate`   ``
 
-## Setup and Installation
+3. Install the required packages: `pip install -r requirements.txt  `
 
-1. **Clone the repository:**
+4. Create a `.env` file in the project root and add the following environment variables: `INSTAGRAM_ACCESS_TOKEN=your_instagram_access_token
+SUPABASE_URL=your_supabase_project_url
+SUPABASE_KEY=your_supabase_api_key
+PINECONE_API_KEY=your_pinecone_api_key
+OPENAI_API_KEY=your_openai_api_key  `
 
-   ```bash
-   git clone https://github.com/your-username/instagram-data-project.git
-   cd instagram-data-project
-   ```
+## Database Setup
 
-2. **Set up a virtual environment and install dependencies:**
+1. Connect to your Supabase project using the SQL Editor.
 
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
-   pip install -r requirements.txt
-   ```
+2. Create the necessary tables by running the following SQL commands:
 
-3. **Set up environment variables:**
-   Create a `.env` file in the project root with the following variables:
+   ````sql
+   -- Create posts table
+   CREATE TABLE IF NOT EXISTS posts (
+       id TEXT PRIMARY KEY,
+       caption TEXT,
+       media_type TEXT,
+       media_url TEXT,
+       permalink TEXT,
+       timestamp TIMESTAMP WITH TIME ZONE,
+       like_count INTEGER,
+       comments_count INTEGER
+   );
 
-   ```plaintext
-   SUPABASE_URL=your_supabase_url
-   SUPABASE_KEY=your_supabase_key
-   OPENAI_API_KEY=your_openai_api_key
-   PINECONE_API_KEY=your_pinecone_api_key
-   INSTAGRAM_ACCESS_TOKEN=your_instagram_access_token
-   ```
+   -- Create comments table
+   CREATE TABLE IF NOT EXISTS comments (
+       id TEXT PRIMARY KEY,
+       post_id TEXT REFERENCES posts(id),
+       text TEXT,
+       username TEXT,
+       timestamp TIMESTAMP WITH TIME ZONE,
+       replied BOOLEAN DEFAULT FALSE,
+       parent_comment_id TEXT
+   );
 
-## Local Development and Testing
+   -- Create metadata table
+   CREATE TABLE IF NOT EXISTS metadata (
+       key TEXT PRIMARY KEY,
+       value TEXT
+   );
 
-To run the script locally:
+   -- Insert initial last_fetch_time
+   INSERT INTO metadata (key, value)
+   VALUES ('last_fetch_time', '1970-01-01T00:00:00+00:00')
+   ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;   ```
 
-```bash
-python instagram_data_pipeline_v2.py
-```
+   ````
 
-To run the unit tests:
+3. To reset the data for a new user or fresh start, run the following SQL commands:
 
-```bash
-python -m unittest test_instagram_data_pipeline.py
-```
+   ````sql
+   -- Clear existing data
+   TRUNCATE TABLE comments;
+   TRUNCATE TABLE posts;
 
-## Deploying to Google Cloud Platform (GCP)
+   -- Reset last_fetch_time
+   UPDATE metadata
+   SET value = '1970-01-01T00:00:00+00:00'
+   WHERE key = 'last_fetch_time';   ```
+   ````
 
-1. **Install and initialize the Google Cloud SDK:**
+## Testing
 
-   - Download and install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install).
-   - Initialize the SDK with your Google account:
+1. Run the connection tests to ensure all services are properly configured: `python test_connections.py  `
 
-     ```bash
-     gcloud init
-     ```
+2. Run the unit tests for the Instagram Data Pipeline: `python -m unittest test_instagram_data_pipeline.py  `
 
-2. **Set your project ID:**
+3. If all tests pass, you can run the pipeline locally: `python instagram_data_pipeline_v2.py  `
 
-   ```bash
-   gcloud config set project YOUR_PROJECT_ID
-   ```
+## Deployment to Google Cloud Functions
 
-3. **Enable necessary APIs:**
+1. Install the Google Cloud SDK and initialize it.
 
-   ```bash
-   gcloud services enable cloudfunctions.googleapis.com cloudscheduler.googleapis.com
-   ```
+2. Create a new Google Cloud project or select an existing one.
 
-4. **Deploy the function:**
+3. Enable the Cloud Functions API for your project.
 
-   ```bash
-   gcloud functions deploy instagram_data_pipeline \
-     --runtime python39 \
-     --trigger-http \
-     --entry-point main \
-     --memory 256MB \
-     --timeout 540s \
-     --set-env-vars SUPABASE_URL=your_supabase_url,SUPABASE_KEY=your_supabase_key,OPENAI_API_KEY=your_openai_api_key,PINECONE_API_KEY=your_pinecone_api_key,INSTAGRAM_ACCESS_TOKEN=your_instagram_access_token
-   ```
+4. Modify the `instagram_data_pipeline_v2.py` file to include the `requirements.txt` content at the top of the file as comments:
 
-   Note: Replace the environment variable values with your actual credentials.
+   ````python
+   # requirements.txt
+   # supabase==2.8.1
+   # pinecone-client==3.0.0
+   # openai==1.3.0
+   # python-dotenv==1.0.0
+   # emoji==2.8.0
+   # python-dateutil==2.8.2
 
-5. **Set up Cloud Scheduler for periodic execution:**
+   import os
+   import logging
+   # ... (rest of the file content)   ```
 
-   ```bash
-   gcloud scheduler jobs create http instagram_data_pipeline_hourly \
-     --schedule "0 * * * *" \
-     --uri "https://REGION-PROJECT_ID.cloudfunctions.net/instagram_data_pipeline" \
-     --http-method POST
-   ```
+   ````
 
-   Replace `REGION` and `PROJECT_ID` with your actual Google Cloud region and project ID.
+5. Deploy the function using the following command: `gcloud functions deploy instagram_data_pipeline \
+  --runtime python39 \
+  --trigger-http \
+  --allow-unauthenticated \
+  --entry-point main \
+  --set-env-vars INSTAGRAM_ACCESS_TOKEN=your_instagram_access_token,SUPABASE_URL=your_supabase_project_url,SUPABASE_KEY=your_supabase_api_key,PINECONE_API_KEY=your_pinecone_api_key,OPENAI_API_KEY=your_openai_api_key  `
+
+6. Set up a Cloud Scheduler job to trigger the function every 15 minutes: `gcloud scheduler jobs create http instagram_data_pipeline_job \
+  --schedule "*/15 * * * *" \
+  --uri "YOUR_FUNCTION_URL" \
+  --http-method POST  `
+
+   Replace `YOUR_FUNCTION_URL` with the URL of your deployed Cloud Function.
+
+7. Your Instagram Data Pipeline is now deployed and will run every 15 minutes!
 
 ## Monitoring and Maintenance
 
-- View logs in the Google Cloud Console under "Cloud Functions" > "instagram_data_pipeline" > "Logs"
-- Regularly check for updates to the Instagram Graph API and adjust the code if necessary
-- Monitor usage and costs for OpenAI API, Pinecone, and Google Cloud services
+- Monitor the Cloud Function logs for any errors or issues.
+- Regularly check your Supabase and Pinecone usage to ensure you're within your plan limits.
+- Update your Instagram access token when necessary to maintain API access.
 
-## Troubleshooting
-
-- Ensure all environment variables are correctly set in the Cloud Function configuration
-- Check Cloud Function logs for detailed error messages
-- Verify that the Instagram access token is valid and has the necessary permissions
-
-## Contributing
-
-Please read CONTRIBUTING.md for details on our code of conduct and the process for submitting pull requests.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE.md file for details.
+For any questions or issues, please open a GitHub issue or contact the project maintainer.

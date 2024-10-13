@@ -14,9 +14,8 @@ class TestInstagramDataPipelineV2(unittest.TestCase):
         self.mock_openai = MagicMock()
         mock_openai.return_value = self.mock_openai
         self.mock_pinecone = MagicMock()
-        mock_pinecone.return_value.Index.return_value = self.mock_pinecone  # Update this line
+        mock_pinecone.return_value.Index.return_value = self.mock_pinecone
         
-        # Mock the load_last_fetch_time method
         with patch.object(InstagramDataPipelineV2, 'load_last_fetch_time', return_value=datetime.min.replace(tzinfo=timezone.utc)):
             self.pipeline = InstagramDataPipelineV2()
 
@@ -44,31 +43,37 @@ class TestInstagramDataPipelineV2(unittest.TestCase):
     def test_clean_text(self):
         text = "Hello, World! 👋 https://example.com"
         cleaned_text = self.pipeline.clean_text(text)
-        self.assertEqual(cleaned_text, "hello world :waving_hand:")  # Update this line
+        self.assertEqual(cleaned_text, "hello world waving_hand")
 
-    @patch.object(InstagramDataPipelineV2, 'fetch_posts')
+    @patch.object(InstagramDataPipelineV2, 'fetch_all_posts')
     @patch.object(InstagramDataPipelineV2, 'fetch_comments')
+    @patch.object(InstagramDataPipelineV2, 'fetch_reply')
     @patch.object(InstagramDataPipelineV2, 'generate_embedding')
-    def test_process_and_upload_data(self, mock_generate_embedding, mock_fetch_comments, mock_fetch_posts):
-        mock_fetch_posts.return_value = [
+    def test_process_and_upload_data(self, mock_generate_embedding, mock_fetch_reply, mock_fetch_comments, mock_fetch_all_posts):
+        mock_fetch_all_posts.return_value = [
             {'id': '1', 'caption': 'Test post', 'timestamp': '2023-01-01T00:00:00+0000'}
         ]
         mock_fetch_comments.return_value = [
-            {'id': 'c1', 'text': 'Test comment', 'timestamp': '2023-01-01T00:00:00+0000'}
+            {'id': 'c1', 'text': 'Test comment', 'timestamp': '2023-01-01T00:00:00+0000', 'replies': {'data': [{'id': 'r1'}]}}
         ]
+        mock_fetch_reply.return_value = {
+            'id': 'r1', 'text': 'Test reply', 'timestamp': '2023-01-01T00:00:00+0000'
+        }
         mock_generate_embedding.return_value = [0.1, 0.2, 0.3]
 
         self.pipeline.process_and_upload_data()
 
-        # Check that upsert was called for posts
+        # Check that upsert was called for posts, comments, and replies
         self.mock_supabase.table().upsert.assert_any_call(
             {'id': '1', 'caption': 'Test post', 'timestamp': '2023-01-01T00:00:00+0000'},
             on_conflict='id'
         )
-
-        # Check that upsert was called for comments
         self.mock_supabase.table().upsert.assert_any_call(
-            {'id': 'c1', 'text': 'Test comment', 'timestamp': '2023-01-01T00:00:00+0000', 'post_id': '1'},
+            {'id': 'c1', 'post_id': '1', 'text': 'Test comment', 'timestamp': '2023-01-01T00:00:00+0000', 'username': 'unknown_user', 'replied': False},
+            on_conflict='id'
+        )
+        self.mock_supabase.table().upsert.assert_any_call(
+            {'id': 'r1', 'post_id': '1', 'parent_comment_id': 'c1', 'text': 'Test reply', 'timestamp': '2023-01-01T00:00:00+0000', 'username': 'unknown_user', 'replied': False},
             on_conflict='id'
         )
 
@@ -80,7 +85,8 @@ class TestInstagramDataPipelineV2(unittest.TestCase):
                 'metadata': {
                     'type': 'post',
                     'timestamp': '2023-01-01T00:00:00+0000',
-                    'engagement': {'likes': 0, 'comments': 0},
+                    'likes': 0,
+                    'comments': 0,
                     'text': 'test post'
                 }
             },
@@ -93,6 +99,18 @@ class TestInstagramDataPipelineV2(unittest.TestCase):
                     'post_id': '1',
                     'username': 'unknown_user',
                     'text': 'test comment'
+                }
+            },
+            {
+                'id': 'r1',
+                'values': [0.1, 0.2, 0.3],
+                'metadata': {
+                    'type': 'reply',
+                    'timestamp': '2023-01-01T00:00:00+0000',
+                    'post_id': '1',
+                    'parent_comment_id': 'c1',
+                    'username': 'unknown_user',
+                    'text': 'test reply'
                 }
             }
         ]
